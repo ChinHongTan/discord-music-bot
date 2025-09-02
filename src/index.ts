@@ -3,8 +3,6 @@ import 'dotenv/config';
 
 const TOKEN = process.env.TOKEN;
 
-console.log(TOKEN);
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
