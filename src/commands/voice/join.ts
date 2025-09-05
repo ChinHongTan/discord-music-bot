@@ -26,7 +26,7 @@ export const execute = async (interaction: CommandInteraction) => {
     await interaction.editReply(`已加入 ${channel.name}`);
 };
 
-async function connectToVoiceChannel(channel: VoiceBasedChannel) {
+export async function connectToVoiceChannel(channel: VoiceBasedChannel) {
     const connection = joinVoiceChannel({
         channelId: channel.id,
         guildId: channel.guild.id,
