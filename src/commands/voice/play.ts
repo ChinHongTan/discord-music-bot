@@ -1,6 +1,8 @@
 import { AudioPlayer, AudioPlayerStatus, createAudioPlayer, createAudioResource, entersState, StreamType, VoiceConnection } from "@discordjs/voice";
 import { CommandInteraction, SlashCommandBuilder } from "discord.js";
-import { connectToVoiceChannel } from "./join.js";
+import { connectToVoiceChannel } from "./join.ts";
+import ytdl from "@distube/ytdl-core"
+import { Readable } from "stream";
 
 // 定義指令的數據結構
 export const data = new SlashCommandBuilder()
@@ -20,14 +22,17 @@ export const execute = async (interaction: CommandInteraction) => {
     }
 
     interaction.deferReply();
+    // 加入語音頻道
     const connection = await connectToVoiceChannel(interaction.member?.voice.channel);
-    const songUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
-    const player = createAudioPlayer();
 
     if (!connection) {
         await interaction.editReply('無法加入語音頻道。');
         return;
     }
+
+    const songUrl = ytdl('https://youtu.be/odw4KzdLbPw?si=UM01Bk3CE_2zTx6B', { filter: 'audioonly', quality: 'highestaudio' });
+
+    const player = createAudioPlayer();
 
     try {
         await playSong(connection, player, songUrl);
@@ -37,13 +42,13 @@ export const execute = async (interaction: CommandInteraction) => {
         await interaction.editReply('無法播放音樂。');
     }
 };
-
-async function playSong(connection: VoiceConnection, player: AudioPlayer, songUrl: string) {
+async function playSong(connection: VoiceConnection, player: AudioPlayer, songUrl: Readable) {
     console.log(`正在播放歌曲: ${songUrl}`);
     const resource = createAudioResource(songUrl, {
         inputType: StreamType.Arbitrary,
     });
     
+    // 播放資源
     player.play(resource);
 
     connection.subscribe(player);
