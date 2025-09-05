@@ -1,16 +1,21 @@
 import { AudioPlayer, AudioPlayerStatus, createAudioPlayer, createAudioResource, entersState, StreamType, VoiceConnection } from "@discordjs/voice";
-import { CommandInteraction, SlashCommandBuilder } from "discord.js";
+import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import { connectToVoiceChannel } from "./join.ts";
-import ytdl from "@distube/ytdl-core"
+import ytdl from "@distube/ytdl-core";
 import { Readable } from "stream";
+import { YouTube } from "youtube-sr";
 
 // 定義指令的數據結構
 export const data = new SlashCommandBuilder()
   .setName('play')
-  .setDescription('播放一首歌。');
+  .setDescription('播放一首歌。')
+  .addStringOption(option =>
+    option.setName('url')
+      .setDescription('搜索關鍵字或YouTube網址')
+      .setRequired(false));
 
 // 主要的執行函數
-export const execute = async (interaction: CommandInteraction) => {
+export const execute = async (interaction: ChatInputCommandInteraction) => {
     if (!interaction.guildId) {
         await interaction.reply('此命令只能在伺服器中使用。');
         return;
@@ -30,12 +35,37 @@ export const execute = async (interaction: CommandInteraction) => {
         return;
     }
 
-    const songUrl = ytdl('https://youtu.be/odw4KzdLbPw?si=UM01Bk3CE_2zTx6B', { filter: 'audioonly', quality: 'highestaudio' });
+    const url = interaction.options.getString('url');
+    if (!url) {
+        await interaction.editReply('請提供一個YouTube網址或搜索關鍵字。');
+        return;
+    }
+
+    let songUrl: string = '';
+
+    // 檢查是否為有效的YouTube網址
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
+    if (youtubeRegex.test(url)) {
+        // 處理YouTube網址
+        songUrl = url;
+    } else {
+        // 使用關鍵字搜索YouTube
+        const result = await YouTube.searchOne(url);
+
+        if (!result || !result.url) {
+            await interaction.editReply('找不到相關的歌曲。');
+            return;
+        }
+
+        songUrl = result.url;
+    }
+
+    const songStream = ytdl(songUrl, { filter: 'audioonly', quality: 'highestaudio' });
 
     const player = createAudioPlayer();
 
     try {
-        await playSong(connection, player, songUrl);
+        await playSong(connection, player, songStream);
         await interaction.editReply(`正在播放: ${songUrl}`);
     } catch (error) {
         console.error('播放音樂時出錯:', error);
