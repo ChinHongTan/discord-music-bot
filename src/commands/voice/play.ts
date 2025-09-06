@@ -5,6 +5,7 @@ import ytdl from "@distube/ytdl-core";
 import { Readable } from "stream";
 import { YouTube } from "youtube-sr";
 import { voiceConnections } from "../../managers/voiceManager.ts";
+import { queue } from "../../managers/queueManager.ts";
 
 // 定義指令的數據結構
 export const data = new SlashCommandBuilder()
@@ -43,6 +44,7 @@ export const execute = async (interaction: ChatInputCommandInteraction) => {
     }
 
     let songUrl: string = '';
+    let songTitle: string = '';
 
     // 檢查是否為有效的YouTube網址
     const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
@@ -59,23 +61,62 @@ export const execute = async (interaction: ChatInputCommandInteraction) => {
         }
 
         songUrl = result.url;
+        songTitle = result.title || songUrl;
     }
 
+    // 使用ytdl獲取音頻流
     const songStream = ytdl(songUrl, { filter: 'audioonly', quality: 'highestaudio' });
 
     const player = createAudioPlayer();
 
     try {
-        await playSong(connection, player, songStream);
-        await interaction.editReply(`正在播放: ${songUrl}`);
+        // 把歌曲加入隊列
+        const serverQueue = queue.get(interaction.guildId) || [];
+        serverQueue.push({ url: songUrl, title: songTitle });
+        queue.set(interaction.guildId, serverQueue);
+
+        // 當隊列中只有這首歌時，開始播放
+        if (serverQueue.length === 1) {
+            await playSong(connection, player, songStream, songTitle);
+            await interaction.editReply(`正在播放: ${songUrl}`);
+        } else {
+            await interaction.editReply(`已將歌曲加入隊列: ${songUrl}`);
+        }
+
+        // 處理歌曲結束事件
+        player.on(AudioPlayerStatus.Idle, async () => {
+            if (!interaction.guildId) return;
+            const currentQueue = queue.get(interaction.guildId);
+            if (currentQueue) {
+                currentQueue.shift(); // 移除已播放的歌曲
+                if (currentQueue.length > 0) {
+                    // 播放下一首歌
+                    const nextSong = currentQueue[0];
+                    if (nextSong && nextSong.url) {
+                        const nextSongStream = ytdl(nextSong.url, { filter: 'audioonly', quality: 'highestaudio' });
+                        await playSong(connection, player, nextSongStream, nextSong.title);
+                        const channel = interaction.channel;
+                        if (channel && channel.isTextBased()) {
+                            (channel as import("discord.js").TextChannel).send(`正在播放: ${nextSong.title}`);
+                        }
+                    }
+                } else {
+                    // 隊列為空，清理資源
+                    voiceConnections.delete(interaction.guildId);
+                    queue.delete(interaction.guildId);
+                    connection.destroy();
+                }
+            }
+        });
     } catch (error) {
         console.error('播放音樂時出錯:', error);
         await interaction.editReply('無法播放音樂。');
     }
 };
-async function playSong(connection: VoiceConnection, player: AudioPlayer, songUrl: Readable) {
-    console.log(`正在播放歌曲: ${songUrl}`);
-    const resource = createAudioResource(songUrl, {
+
+async function playSong(connection: VoiceConnection, player: AudioPlayer, songStream: Readable, songTitle: string) {
+    console.log(`正在播放歌曲: ${songTitle}`);
+    const resource = createAudioResource(songStream, {
         inputType: StreamType.Arbitrary,
     });
     
@@ -83,6 +124,13 @@ async function playSong(connection: VoiceConnection, player: AudioPlayer, songUr
     player.play(resource);
 
     connection.subscribe(player);
+
+    // 儲存播放器實例
+    voiceConnections.set(connection.joinConfig.guildId, {
+        connection,
+        player
+    });
+
 
     // 確保播放器進入播放狀態
     return entersState(player, AudioPlayerStatus.Playing, 5_000);
