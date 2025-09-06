@@ -1,6 +1,8 @@
 interface Song {
-  url: string;
-  title: string;
+    url: string;
+    title: string;
+    artist: string;
+    thumbnail: string;
 }
 
 // 每個伺服器的歌曲隊列

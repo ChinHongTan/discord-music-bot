@@ -1,5 +1,5 @@
 import { AudioPlayer, AudioPlayerStatus, createAudioPlayer, createAudioResource, entersState, StreamType, VoiceConnection } from "@discordjs/voice";
-import { AutocompleteInteraction, ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import { AutocompleteInteraction, ChatInputCommandInteraction, SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { connectToVoiceChannel } from "./join.ts";
 import ytdl from "@distube/ytdl-core";
 import { Readable } from "stream";
@@ -46,6 +46,8 @@ export const execute = async (interaction: ChatInputCommandInteraction) => {
 
     let songUrl: string = '';
     let songTitle: string = '';
+    let songArtist: string = '';
+    let songThumbnail: string = '';
 
     // 檢查是否為有效的YouTube網址
     const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
@@ -63,6 +65,8 @@ export const execute = async (interaction: ChatInputCommandInteraction) => {
 
         songUrl = result.url;
         songTitle = result.title || songUrl;
+        songArtist = result.channel?.name || '未知';
+        songThumbnail = result.thumbnail?.url || '';
     }
 
     // 使用ytdl獲取音頻流
@@ -73,15 +77,14 @@ export const execute = async (interaction: ChatInputCommandInteraction) => {
     try {
         // 把歌曲加入隊列
         const serverQueue = queue.get(interaction.guildId) || [];
-        serverQueue.push({ url: songUrl, title: songTitle });
+        serverQueue.push({ url: songUrl, title: songTitle, artist: songArtist, thumbnail: songThumbnail });
         queue.set(interaction.guildId, serverQueue);
+
+        await interaction.editReply(`已將歌曲加入隊列: [${songTitle}](${songUrl})`);
 
         // 當隊列中只有這首歌時，開始播放
         if (serverQueue.length === 1) {
-            await playSong(connection, player, songStream, songTitle);
-            await interaction.editReply(`正在播放: ${songUrl}`);
-        } else {
-            await interaction.editReply(`已將歌曲加入隊列: ${songUrl}`);
+            await playSong(interaction, connection, player, songStream, { title: songTitle, artist: songArtist, thumbnail: songThumbnail }, songUrl);
         }
 
         // 處理歌曲結束事件
@@ -95,11 +98,7 @@ export const execute = async (interaction: ChatInputCommandInteraction) => {
                     const nextSong = currentQueue[0];
                     if (nextSong && nextSong.url) {
                         const nextSongStream = ytdl(nextSong.url, { filter: 'audioonly', quality: 'highestaudio' });
-                        await playSong(connection, player, nextSongStream, nextSong.title);
-                        const channel = interaction.channel;
-                        if (channel && channel.isTextBased()) {
-                            (channel as import("discord.js").TextChannel).send(`正在播放: ${nextSong.title}`);
-                        }
+                        await playSong(interaction, connection, player, nextSongStream, { title: nextSong.title, artist: nextSong.artist, thumbnail: nextSong.thumbnail }, nextSong.url);
                     }
                 } else {
                     // 隊列為空，清理資源
@@ -124,8 +123,8 @@ export const autocomplete = async (interaction: AutocompleteInteraction) => {
     await interaction.respond(results.map(result => ({ name: result, value: result })));
 };
 
-async function playSong(connection: VoiceConnection, player: AudioPlayer, songStream: Readable, songTitle: string) {
-    console.log(`正在播放歌曲: ${songTitle}`);
+async function playSong(interaction: ChatInputCommandInteraction, connection: VoiceConnection, player: AudioPlayer, songStream: Readable, metadata: { title: string, artist?: string, thumbnail?: string }, songUrl?: string) {
+    console.log(`正在播放歌曲: ${metadata.title}`);
     const resource = createAudioResource(songStream, {
         inputType: StreamType.Arbitrary,
     });
@@ -141,8 +140,27 @@ async function playSong(connection: VoiceConnection, player: AudioPlayer, songSt
         player
     });
 
+    // 顯示播放embed
+    const playEmbed = new EmbedBuilder()
+        .setTitle(`正在播放`)
+        .setDescription(`[${metadata.title}](${songUrl})`)
+        .setColor('#FF0000')
+        .addFields(
+            { name: '作者', value: metadata.artist || '未知', inline: false },
+            { name: '剩餘歌曲', value: `${(queue.get(connection.joinConfig.guildId)?.length || 1) - 1}`, inline: true },
+            { name: '下一首歌曲', value: queue.get(connection.joinConfig.guildId)?.[1]?.title || '無', inline: true }
+        );
+
+    if (metadata.thumbnail && /^https?:\/\/.+\..+/.test(metadata.thumbnail)) {
+        playEmbed.setThumbnail(metadata.thumbnail);
+    }
+
+    // 發送embed到當前頻道
+    const channel = interaction.channel;
+    if (channel && channel.isTextBased()) {
+        (channel as import("discord.js").TextChannel).send({ embeds: [playEmbed] });
+    }
 
     // 確保播放器進入播放狀態
     return entersState(player, AudioPlayerStatus.Playing, 5_000);
-
 }
