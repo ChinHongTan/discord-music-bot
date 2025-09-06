@@ -1,6 +1,7 @@
 import { CommandInteraction, SlashCommandBuilder } from "discord.js";
 import type { VoiceBasedChannel } from "discord.js";
 import { entersState, joinVoiceChannel, VoiceConnectionStatus } from "@discordjs/voice"
+import { voiceConnections } from "../../managers/voiceManager.ts";
 
 // 定義指令的數據結構
 export const data = new SlashCommandBuilder()
@@ -36,6 +37,7 @@ export async function connectToVoiceChannel(channel: VoiceBasedChannel) {
     try {
         console.log(`正在連接到 ${channel.name} 的語音頻道...`);
         await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+        voiceConnections.set(channel.guild.id, { connection });
         return connection;
     } catch (error) {
         connection.destroy();

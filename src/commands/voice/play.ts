@@ -4,6 +4,7 @@ import { connectToVoiceChannel } from "./join.ts";
 import ytdl from "@distube/ytdl-core";
 import { Readable } from "stream";
 import { YouTube } from "youtube-sr";
+import { voiceConnections } from "../../managers/voiceManager.ts";
 
 // 定義指令的數據結構
 export const data = new SlashCommandBuilder()
@@ -28,7 +29,7 @@ export const execute = async (interaction: ChatInputCommandInteraction) => {
 
     interaction.deferReply();
     // 加入語音頻道
-    const connection = await connectToVoiceChannel(interaction.member?.voice.channel);
+    const connection = voiceConnections.get(interaction.guildId)?.connection || await connectToVoiceChannel(interaction.member.voice.channel);
 
     if (!connection) {
         await interaction.editReply('無法加入語音頻道。');
