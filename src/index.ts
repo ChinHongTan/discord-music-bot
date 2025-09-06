@@ -52,6 +52,24 @@ client.on(Events.ClientReady, readyClient => {
 
 // 事件處理
 client.on(Events.InteractionCreate, async interaction => {
+    // autocomplete 事件處理
+    if (interaction.isAutocomplete()) {
+        const command = interaction.client.commands.get(interaction.commandName);
+
+        if (!command) {
+            console.error(`[錯誤] 找不到與 ${interaction.commandName} 匹配的命令。`);
+            return;
+        }
+
+        try {
+            await command.autocomplete(interaction);
+        } catch (error) {
+            console.error(error);
+        }
+        return;
+    }
+
+    // chat input command 事件處理
     if (!interaction.isChatInputCommand()) return;
 
     const command = interaction.client.commands.get(interaction.commandName);

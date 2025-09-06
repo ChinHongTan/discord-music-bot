@@ -1,5 +1,5 @@
 import { AudioPlayer, AudioPlayerStatus, createAudioPlayer, createAudioResource, entersState, StreamType, VoiceConnection } from "@discordjs/voice";
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import { AutocompleteInteraction, ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import { connectToVoiceChannel } from "./join.ts";
 import ytdl from "@distube/ytdl-core";
 import { Readable } from "stream";
@@ -38,8 +38,8 @@ export const execute = async (interaction: ChatInputCommandInteraction) => {
         return;
     }
 
-    const url = interaction.options.getString('url');
-    if (!url) {
+    const query = interaction.options.getString('query');
+    if (!query) {
         await interaction.editReply('請提供一個YouTube網址或搜索關鍵字。');
         return;
     }
@@ -49,12 +49,12 @@ export const execute = async (interaction: ChatInputCommandInteraction) => {
 
     // 檢查是否為有效的YouTube網址
     const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
-    if (youtubeRegex.test(url)) {
+    if (youtubeRegex.test(query)) {
         // 處理YouTube網址
-        songUrl = url;
+        songUrl = query;
     } else {
         // 使用關鍵字搜索YouTube
-        const result = await YouTube.searchOne(url);
+        const result = await YouTube.searchOne(query);
 
         if (!result || !result.url) {
             await interaction.editReply('找不到相關的歌曲。');
@@ -66,7 +66,7 @@ export const execute = async (interaction: ChatInputCommandInteraction) => {
     }
 
     // 使用ytdl獲取音頻流
-    const songStream = ytdl(songUrl, { filter: 'audioonly', quality: 'highestaudio' });
+    const songStream = ytdl(songUrl, { filter: 'audioonly', quality: 'highestaudio', highWaterMark: 1 << 25 });
 
     const player = createAudioPlayer();
 
@@ -113,6 +113,15 @@ export const execute = async (interaction: ChatInputCommandInteraction) => {
         console.error('播放音樂時出錯:', error);
         await interaction.editReply('無法播放音樂。');
     }
+};
+
+export const autocomplete = async (interaction: AutocompleteInteraction) => {
+    const focusedValue = interaction.options.getFocused();
+    if (!focusedValue) return;
+
+    const results = await YouTube.getSuggestions(focusedValue);
+
+    await interaction.respond(results.map(result => ({ name: result, value: result })));
 };
 
 async function playSong(connection: VoiceConnection, player: AudioPlayer, songStream: Readable, songTitle: string) {
