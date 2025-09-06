@@ -3,8 +3,8 @@ import { voiceConnections } from "../../managers/voiceManager.ts";
 
 // 定義指令的數據結構
 export const data = new SlashCommandBuilder()
-  .setName('skip')
-  .setDescription('跳過當前播放的歌曲。');
+  .setName('stop')
+  .setDescription('停止播放音樂。');
 
 // 主要的執行函數
 export const execute = async (interaction: CommandInteraction) => {
@@ -31,11 +31,9 @@ export const execute = async (interaction: CommandInteraction) => {
         return;
     }
 
-    // 跳過當前歌曲
-    const success = player.stop();
-    if (success) {
-        await interaction.reply('已跳過當前歌曲。');
-    } else {
-        await interaction.reply('無法跳過當前歌曲。');
-    }
+    player.stop();
+    voiceConnections.delete(interaction.guildId);
+    connection.destroy();
+
+    await interaction.reply('已停止播放音樂。');
 };

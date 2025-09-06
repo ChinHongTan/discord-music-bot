@@ -12,9 +12,10 @@ export const data = new SlashCommandBuilder()
   .setName('play')
   .setDescription('播放一首歌。')
   .addStringOption(option =>
-    option.setName('url')
+    option.setName('query')
       .setDescription('搜索關鍵字或YouTube網址')
-      .setRequired(false));
+      .setAutocomplete(true)
+      .setRequired(true));
 
 // 主要的執行函數
 export const execute = async (interaction: ChatInputCommandInteraction) => {
